@@ -7,6 +7,8 @@ on:
     types: [created]
   issues:
     types: [opened, assigned]
+  pull_request:
+    types: [opened, synchronize]
 
 permissions:
   contents: write
@@ -18,9 +20,13 @@ jobs:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude')) ||
+      github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this pull request. Check for bugs, logic issues, and anything that could break existing functionality.
+            Post your findings as review comments on the relevant lines where possible.
