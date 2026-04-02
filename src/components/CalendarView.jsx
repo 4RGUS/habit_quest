@@ -17,9 +17,14 @@ export function CalendarView({ completions, habits }) {
   const getScore = (day) => {
     const key = format(day, 'yyyy-MM-dd')
     const dayData = completions[key] || {}
-    if (!habits.length) return 0
-    const done = habits.filter(h => habitDone(h, dayData)).length
-    return done / habits.length
+    const activeHabits = habits.filter(h => {
+      if (!h.createdAt) return true
+      const created = h.createdAt.toDate ? h.createdAt.toDate() : new Date(h.createdAt)
+      return format(created, 'yyyy-MM-dd') <= key
+    })
+    if (!activeHabits.length) return 0
+    const done = activeHabits.filter(h => habitDone(h, dayData)).length
+    return done / activeHabits.length
   }
 
   const habitDone = (h, dayData) => {
@@ -133,7 +138,11 @@ export function CalendarView({ completions, habits }) {
             <div style={{ color:'var(--text-muted)', fontSize:12, textAlign:'center', padding:'12px 0' }}>No habits tracked yet</div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {habits.map(h => {
+              {habits.filter(h => {
+                if (!h.createdAt) return true
+                const created = h.createdAt.toDate ? h.createdAt.toDate() : new Date(h.createdAt)
+                return format(created, 'yyyy-MM-dd') <= selectedKey
+              }).map(h => {
                 const done = habitDone(h, selectedData)
                 const color = h.color || '#6366f1'
 
