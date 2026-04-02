@@ -7,27 +7,30 @@ on:
     types: [created]
   issues:
     types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
   pull_request:
-    types: [opened, synchronize]
-
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  id-token: write
+    types: [opened]
 
 jobs:
   claude:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude')) ||
-      github.event_name == 'pull_request'
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))) ||
+      (github.event_name == 'pull_request')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
     steps:
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            Review this pull request. Check for bugs, logic issues, and anything that could break existing functionality.
-            Post your findings as review comments on the relevant lines where possible.
+            ${{ github.event_name == 'pull_request' &&
+              'Review this pull request. Check for: bugs or broken logic, React state/effect issues, missing edge case handling, UI inconsistencies, and any security concerns. Post a clear summary as a PR comment with specific file and line references where issues are found.' ||
+              '' }}
