@@ -1,11 +1,35 @@
 // src/hooks/useHabits.js
 import { useState, useEffect, useCallback } from 'react'
-import { format, subDays, parseISO, differenceInCalendarDays } from 'date-fns'
+import { format, subDays } from 'date-fns'
 import {
   getHabits, createHabit, updateHabit, deleteHabit,
-  getCompletion, setCompletion, getRecentCompletions,
+  setCompletion, getRecentCompletions,
   getProfile, updateProfile, todayStr
 } from '../lib/db'
+
+// Returns true if a day's completion map has at least one completed habit
+function dayHasCompletion(dayData) {
+  return Object.values(dayData || {}).some(v => v === true || (typeof v === 'number' && v > 0))
+}
+
+// Calculate streak from completion data.
+// Walks back day by day; skips today if nothing done yet (user may still complete).
+// Stops at the first day with no completions.
+function calcStreak(completions) {
+  let streak = 0
+  for (let i = 0; i < 60; i++) {
+    const key = format(subDays(new Date(), i), 'yyyy-MM-dd')
+    if (dayHasCompletion(completions[key])) {
+      streak++
+    } else if (i === 0) {
+      // Today is empty but don't break — user might complete habits later
+      continue
+    } else {
+      break
+    }
+  }
+  return streak
+}
 
 export function useHabits(uid) {
   const [habits, setHabits]           = useState([])
@@ -24,21 +48,10 @@ export function useHabits(uid) {
       setHabits(h)
       setCompletions(c)
 
-      // Streak recalculation on load
-      const today = todayStr()
-      let { streak, lastDate, totalXP } = p
-      if (lastDate !== today) {
-        const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
-        if (lastDate === yesterday) {
-          streak = (streak || 0) + 1
-        } else if (lastDate !== today) {
-          streak = 1
-        }
-        updateProfile(uid, { streak, lastDate: today, totalXP: totalXP || 0 })
-        setProfile({ streak, lastDate: today, totalXP: totalXP || 0 })
-      } else {
-        setProfile(p)
-      }
+      const streak = calcStreak(c)
+      const newProfile = { totalXP: p.totalXP || 0, streak }
+      updateProfile(uid, newProfile)
+      setProfile(newProfile)
       setLoading(false)
     })
   }, [uid])
@@ -64,25 +77,29 @@ export function useHabits(uid) {
   const checkHabit = useCallback(async (habitId, value, xpEarned) => {
     const today = todayStr()
     await setCompletion(uid, today, habitId, value)
-    setCompletions(prev => ({
-      ...prev,
-      [today]: { ...(prev[today] || {}), [habitId]: value }
-    }))
-    // Award XP (never go below 0)
+
+    const newCompletions = {
+      ...completions,
+      [today]: { ...(completions[today] || {}), [habitId]: value }
+    }
+    setCompletions(newCompletions)
+
     const newXP = Math.max(0, (profile.totalXP || 0) + xpEarned)
-    await updateProfile(uid, { totalXP: newXP })
-    setProfile(prev => ({ ...prev, totalXP: newXP }))
-  }, [uid, profile.totalXP])
+    const newStreak = calcStreak(newCompletions)
+    await updateProfile(uid, { totalXP: newXP, streak: newStreak })
+    setProfile(prev => ({ ...prev, totalXP: newXP, streak: newStreak }))
+  }, [uid, profile.totalXP, completions])
 
   // ── Computed helpers ─────────────────────────────────────
   const todayCompletions = completions[todayStr()] || {}
 
   const getHabitStreak = useCallback((habitId) => {
     let s = 0
-    for (let i = 0; i < 365; i++) {
+    for (let i = 0; i < 60; i++) {
       const key = format(subDays(new Date(), i), 'yyyy-MM-dd')
       const val = completions[key]?.[habitId]
       if (val === true || (typeof val === 'number' && val > 0)) s++
+      else if (i === 0) continue
       else break
     }
     return s
